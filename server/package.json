@@ -1,0 +1,13 @@
+{
+  "type": "module",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.0",
+    "axios": "^1.11.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "node-fetch": "^3.3.2",
+    "twitter-api-v2": "^1.24.0",
+    "zod": "^3.25.76"
+  }
+}
