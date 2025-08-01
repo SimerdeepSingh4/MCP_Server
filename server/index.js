@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
-import { createPost, findImage, getTrendingHashtags } from "./mcp.tool.js";
+import { createPost, findImage, getTrendingHashtags, getTweetAnalytics, getMyTweets,createReadWriteFile } from "./mcp.tool.js";
 import { z } from "zod";
 
 const app = express();
@@ -61,6 +61,31 @@ server.tool(
     threadParts: z.array(z.string()).optional()
   },
   createPost
+);
+server.tool(
+  "getTweetAnalytics",
+  "Get analytics of a tweet by its ID",
+  {
+    tweet_id: z.string()
+  },
+  getTweetAnalytics
+);
+server.tool(
+  "getMyTweets",
+  "Get the authenticated user's recent tweets",
+  {},
+  getMyTweets
+);
+
+server.tool(
+  "createReadWriteFile",
+  "Read from or write to files using structured input",
+  {
+    filename: z.string().describe("Filename with extension (e.g. hello.js)"),
+    content: z.string().describe("The content to write (ignored in read mode)").optional(),
+    mode: z.enum(["read", "write"]).describe("Choose whether to read or write the file").optional()
+  },
+  createReadWriteFile
 );
 
 // Store transports by session ID

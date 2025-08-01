@@ -1,0 +1,1 @@
+Create abcd.txt and write hii my name is simerdeep

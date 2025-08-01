@@ -3,6 +3,10 @@ import { TwitterApi } from "twitter-api-v2";
 import { config } from "dotenv";
 import fs from "fs";
 import axios from "axios";
+import { exec } from "child_process";
+import util from "util";
+import { log } from "console";
+import path from "path";
 
 config();
 
@@ -18,7 +22,7 @@ export async function getTrendingHashtags({ category }) {
         // Get trending topics from Twitter API
         // Twitter Trends API requires a WOEID (Where On Earth ID). 1 is the worldwide ID
         const trends = await twitterClient.v1.trendsPlace(1);
-        
+
         if (!trends || !trends[0] || !trends[0].trends) {
             throw new Error("No trends data available");
         }
@@ -29,17 +33,17 @@ export async function getTrendingHashtags({ category }) {
             .filter(trend => {
                 const trendText = trend.name.toLowerCase();
                 const categoryText = category.toLowerCase();
-                return (trend.name.startsWith('#') && 
-                       (trendText.includes(categoryText) || 
-                        trendText.includes('tech') || 
-                        trendText.includes('ai') || 
+                return (trend.name.startsWith('#') &&
+                    (trendText.includes(categoryText) ||
+                        trendText.includes('tech') ||
+                        trendText.includes('ai') ||
                         trendText.includes('education')));
             })
             .slice(0, 5)
             .map(t => t.name);
 
-        const hashtagsText = relevantTrends.length > 0 
-            ? relevantTrends.join(' ') 
+        const hashtagsText = relevantTrends.length > 0
+            ? relevantTrends.join(' ')
             : `#${category} #AI #Education #Tech #Innovation`;
 
         return {
@@ -61,91 +65,64 @@ export async function getTrendingHashtags({ category }) {
 
 export async function findImage(args) {
     try {
-        // Validate Pexels API key
-        if (!process.env.PEXELS_API_KEY) {
-            throw new Error("Pexels API key is not configured");
-        }
+        const accessKey = process.env.UNSPLASH_ACCESS_KEY;
+        if (!accessKey) throw new Error("Unsplash Access Key is not configured");
 
-        // Extract topic from args and ensure it's a string
         const topic = typeof args === 'object' ? args.topic : args;
-        const topicLower = String(topic || '').toLowerCase();
-        let searchQuery = topic + " education technology";  // Always include education and technology
-        let specificKeywords = [];
+        const fullQuery = String(topic || '').toLowerCase().trim();
+        if (!fullQuery) throw new Error("Empty topic provided");
 
-        // AI and ML specific terms
-        if (topicLower.includes('ai') || topicLower.includes('artificial intelligence') || topicLower.includes('machine learning')) {
-            specificKeywords = [
-                'data visualization classroom',
-                'digital technology education',
-                'computer learning student',
-                'smart classroom technology',
-                'artificial intelligence education'
+        console.log("Extracting keywords from:", fullQuery);
+
+        const stopwords = ['the', 'is', 'a', 'an', 'and', 'or', 'to', 'in', 'on', 'of', 'for', 'with', 'as', 'by', 'at', 'from'];
+        const extractedKeywords = fullQuery
+            .split(/\s+/)
+            .map(word => word.replace(/[^\w]/g, ''))
+            .filter(word => word.length > 2 && !stopwords.includes(word))
+            .slice(0, 5);
+
+        const userQuery = extractedKeywords.join(' ') || fullQuery;
+        const primarySearchQueries = [userQuery];
+        let fallbackQueries = [];
+
+        // Only add fallback educational queries if relevant
+        if (/(education|learning|student|ai|technology|classroom|teacher)/i.test(fullQuery)) {
+            fallbackQueries = [
+                fullQuery + " education technology",
+                "AI in education",
+                "students using computers",
+                "modern classroom learning",
+                "digital education"
             ];
         }
 
-        // Education specific terms
-        if (topicLower.includes('education') || topicLower.includes('learning') || topicLower.includes('student')) {
-            specificKeywords = specificKeywords.concat([
-                'classroom technology modern',
-                'digital learning student',
-                'educational technology computer',
-                'modern classroom technology',
-                'student learning computer'
-            ]);
-        }
-
-        // Add specific contexts
-        if (topicLower.includes('data') || topicLower.includes('analytics')) {
-            specificKeywords.push('data analysis education', 'learning analytics dashboard');
-        }
-        if (topicLower.includes('virtual') || topicLower.includes('vr')) {
-            specificKeywords.push('virtual reality classroom', 'vr education student');
-        }
-        if (topicLower.includes('robot')) {
-            specificKeywords.push('educational robotics', 'classroom robot learning');
-        }
-
         let bestMatch = null;
-        let bestMatchDescription = "";
 
-        // Try each keyword combination until we find a good match
-        for (const keyword of [searchQuery, ...specificKeywords]) {
-            console.log("Trying image search with query:", keyword);
-            console.log(`Searching Pexels with keyword: "${keyword}"`);
-            const res = await fetch(`https://api.pexels.com/v1/search?query=${encodeURIComponent(keyword)}&per_page=5`, {
-                headers: {
-                    Authorization: process.env.PEXELS_API_KEY
-                }
+        for (const query of [...primarySearchQueries, ...fallbackQueries]) {
+            console.log("Searching Unsplash with query:", query);
+
+            const res = await fetch(`https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&per_page=5&orientation=landscape`, {
+                headers: { Authorization: `Client-ID ${accessKey}` }
             });
 
             if (!res.ok) {
                 const errorText = await res.text();
-                console.error("API error for query:", keyword, "Status:", res.status, "Response:", errorText);
+                console.error("API error:", query, res.status, errorText);
                 continue;
             }
 
             const data = await res.json();
-            if (!data.photos?.length) {
-                console.log("No photos found for query:", keyword);
+            if (!data.results?.length) {
+                console.log("No results for:", query);
                 continue;
             }
 
-            // Find the best photo from this batch
-            for (const photo of data.photos) {
-                if (photo.src.large && photo.alt) {
-                    const description = photo.alt.toLowerCase();
-                    if (description.includes('technology') || 
-                        description.includes('digital') || 
-                        description.includes('computer') || 
-                        description.includes('education') || 
-                        description.includes('learning') ||
-                        description.includes('classroom') ||
-                        description.includes('student')) {
-                        bestMatch = photo.src.large;
-                        bestMatchDescription = photo.alt;
-                        console.log("Found relevant image:", bestMatchDescription);
-                        break;
-                    }
+            // ✅ Allow any image from the first valid query
+            for (const photo of data.results) {
+                if (photo.urls?.regular) {
+                    bestMatch = photo.urls.regular;
+                    console.log("Selected:", photo.alt_description || "No description");
+                    break;
                 }
             }
 
@@ -153,75 +130,75 @@ export async function findImage(args) {
         }
 
         if (!bestMatch) {
-            console.log("No suitable image found after trying all keywords");
+            console.log("No suitable image found for topic:", fullQuery);
             return {
-                content: [{
-                    type: "text",
-                    text: "No suitable image found for the topic"
-                }],
+                content: [{ type: "text", text: "No suitable image found for the topic" }],
                 isError: true
             };
         }
 
         return {
-            content: [{
-                type: "text",
-                text: bestMatch
-            }]
+            content: [{ type: "text", text: bestMatch }]
         };
+
     } catch (error) {
         console.error("Error finding image:", error);
         return {
-            content: [{
-                type: "text",
-                text: "Error finding image: " + error.message
-            }],
+            content: [{ type: "text", text: "Error finding image: " + error.message }],
             isError: true
         };
     }
 }
 
 
+
 export async function createPost({ status, image_url, isThread = false, threadParts = [] }) {
     try {
         console.log("Posting to Twitter:", status);
-        const tweetText = status.slice(0, 280); // Ensure we don't exceed Twitter's limit
+        const tweetText = status.slice(0, 280); // Twitter limit
 
         let mediaId;
+        let imageUploadErrorMessage = null;
+
         if (image_url) {
             try {
                 console.log("Downloading image from:", image_url);
-                const response = await axios.get(image_url, { 
+                const response = await axios.get(image_url, {
                     responseType: 'arraybuffer',
-                    timeout: 5000 // 5 second timeout
+                    timeout: 7000,
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0'
+                    }
                 });
-                
+
                 if (response.status !== 200) {
                     throw new Error(`Image download failed with status ${response.status}`);
                 }
 
-                console.log("Image downloaded, uploading to Twitter...");
+                const contentType = response.headers['content-type'];
+                if (!['image/jpeg', 'image/jpg', 'image/png'].includes(contentType)) {
+                    throw new Error(`Unsupported image format: ${contentType}`);
+                }
+
                 const buffer = Buffer.from(response.data, 'binary');
-                mediaId = await twitterClient.v1.uploadMedia(buffer, { mimeType: 'image/jpeg' });
+                mediaId = await twitterClient.v1.uploadMedia(buffer, { mimeType: contentType });
                 console.log("Image uploaded successfully with mediaId:", mediaId);
             } catch (e) {
                 console.error("Image processing failed:", e);
-                // Continue without the image
+                imageUploadErrorMessage = `⚠️ Image upload failed: ${e.message}`;
             }
         }
 
-        console.log("Sending tweet...");
-        let reply_to;
-        
         // Post the main tweet
+        console.log("Sending tweet...");
         const tweet = await twitterClient.v2.tweet({
             text: tweetText,
             media: mediaId ? { media_ids: [mediaId] } : undefined
         });
-        
-        reply_to = tweet.data.id;
 
-        // If this is a thread, post the additional parts
+        let reply_to = tweet.data.id;
+
+        // If it's a thread
         if (isThread && threadParts && threadParts.length > 0) {
             console.log("Creating thread with", threadParts.length, "additional tweets");
             for (const part of threadParts) {
@@ -231,26 +208,180 @@ export async function createPost({ status, image_url, isThread = false, threadPa
                 });
                 reply_to = threadTweet.data.id;
             }
-            return {
-                content: [{ 
-                    type: "text", 
-                    text: `Thread posted! Main tweet: ${tweetText}${mediaId ? ' (with image)' : ''}\nThread length: ${threadParts.length + 1} tweets` 
-                }]
-            };
         }
 
-        return {
-            content: [{ 
-                type: "text", 
-                text: `Tweeted: ${tweetText}${mediaId ? ' (with image)' : ''}` 
-            }]
-        };
+        // Prepare final response
+        const resultText = isThread
+            ? `🧵 Thread posted! Main tweet: ${tweetText}${mediaId ? ' (with image)' : ''}\nThread length: ${threadParts.length + 1} tweets`
+            : `✅ Tweeted: ${tweetText}${mediaId ? ' (with image)' : ''}`;
+
+        const content = [
+            { type: "text", text: resultText }
+        ];
+
+        if (imageUploadErrorMessage) {
+            content.unshift({ type: "text", text: imageUploadErrorMessage });
+        }
+
+        return { content };
+
     } catch (error) {
         console.error("Tweet error:", error);
         return {
-            content: [{ type: "text", text: `Failed to tweet: ${error.message}` }],
+            content: [{ type: "text", text: `❌ Failed to tweet: ${error.message}` }],
+            isError: true
+        };
+    }
+}
+export async function getTweetAnalytics({ tweet_id }) {
+    try {
+        console.log("Fetching analytics for Tweet ID:", tweet_id);
+
+        // Get tweet with public metrics
+        const tweet = await twitterClient.v2.singleTweet(tweet_id, {
+            "tweet.fields": ["public_metrics", "created_at"]
+        });
+
+        const metrics = tweet?.data?.public_metrics;
+
+        if (!metrics) {
+            throw new Error("No metrics found for this tweet.");
+        }
+
+        const resultText = `📊 Tweet Analytics:
+🆔 ID: ${tweet_id}
+📅 Created at: ${tweet.data.created_at}
+👀 Impressions: Not available via API
+❤️ Likes: ${metrics.like_count}
+🔁 Retweets: ${metrics.retweet_count}
+💬 Replies: ${metrics.reply_count}
+🔁 Quotes: ${metrics.quote_count}`;
+
+        return {
+            content: [
+                { type: "text", text: resultText }
+            ]
+        };
+
+    } catch (error) {
+        console.error("Analytics fetch failed:", error);
+        return {
+            content: [{ type: "text", text: `❌ Failed to get analytics: ${error.message}` }],
             isError: true
         };
     }
 }
 
+export async function getMyTweets() {
+    const BEARER_TOKEN = process.env.TWITTER_BEARER_TOKEN;
+
+    const userRes = await fetch(`https://api.twitter.com/2/users/me`, {
+        headers: {
+            Authorization: `Bearer ${BEARER_TOKEN}`
+        }
+    });
+
+    const userData = await userRes.json();
+    const userId = userData.data?.id;
+
+    if (!userId) {
+        return {
+            content: [
+                {
+                    type: "text",
+                    text: "❌ Unable to retrieve user ID. Make sure authentication is correct."
+                }
+            ]
+        };
+    }
+
+    const tweetsRes = await fetch(`https://api.twitter.com/2/users/${userId}/tweets?max_results=5`, {
+        headers: {
+            Authorization: `Bearer ${BEARER_TOKEN}`
+        }
+    });
+
+    const tweetsData = await tweetsRes.json();
+
+    if (!tweetsData?.data) {
+        return {
+            content: [
+                {
+                    type: "text",
+                    text: "⚠️ No tweets found for the user."
+                }
+            ]
+        };
+    }
+
+    const tweetsList = tweetsData.data
+        .map(tweet => `🆔 ${tweet.id}\n📄 ${tweet.text}`)
+        .join("\n\n");
+
+    return {
+        content: [
+            {
+                type: "text",
+                text: `📝 Here are your recent tweets:\n\n${tweetsList}\n\nProvide a Tweet ID to fetch analytics.`
+            }
+        ]
+    };
+}
+
+
+export async function createReadWriteFile({ filename = '', content = '', mode = 'write' }) {
+    const generatedPath = './generated';
+    const filePath = path.join(generatedPath, filename);
+
+    if (!filename.trim()) {
+        return {
+            content: [{ type: "text", text: "⚠️ Please provide a valid filename." }],
+            isError: true
+        };
+    }
+
+    // Ensure output folder exists
+    if (!fs.existsSync(generatedPath)) {
+        fs.mkdirSync(generatedPath);
+    }
+
+    if (mode === 'read') {
+        if (!fs.existsSync(filePath)) {
+            return {
+                content: [{ type: "text", text: `❌ File "${filename}" does not exist.` }],
+                isError: true
+            };
+        }
+
+        try {
+            const fileContent = fs.readFileSync(filePath, 'utf-8');
+            return {
+                content: [{
+                    type: "text",
+                    text: `📄 Content of ${filename}:\n\n${fileContent.slice(0, 1000)}${fileContent.length > 1000 ? '...\n\n(Truncated)' : ''}`
+                }]
+            };
+        } catch (err) {
+            return {
+                content: [{ type: "text", text: `❌ Failed to read file: ${err.message}` }],
+                isError: true
+            };
+        }
+    }
+
+    // Default is write mode
+    try {
+        fs.writeFileSync(filePath, content);
+        return {
+            content: [{
+                type: "text",
+                text: `✅ File created: ${filename}\n📂 Location: ${filePath}`
+            }]
+        };
+    } catch (err) {
+        return {
+            content: [{ type: "text", text: `❌ Failed to write file: ${err.message}` }],
+            isError: true
+        };
+    }
+}
