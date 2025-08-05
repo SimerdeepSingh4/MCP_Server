@@ -94,10 +94,16 @@ MCP_Server/
 - Statistics Integration
 - Multi-Platform Content Generation
 
-## 📜 License
+## 🙋‍♂️ Author
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+**Simerdeep Singh Gandhi**
 
-## 🤝 Support
+- Portfolio: [https://simerdeep-portfolio.vercel.app/](https://simerdeep-portfolio.vercel.app/)
+- GitHub: [@SimerdeepSingh4](https://github.com/SimerdeepSingh4)
+- LinkedIn: [Simerdeep Singh Gandhi](https://www.linkedin.com/in/simerdeep-singh-gandhi-5569a7279/)
 
-For support, please open an issue in the repository or contact the maintainers.
+---
+
+## ✨ Show Your Support
+
+Give a ⭐️ if this project helped you!
