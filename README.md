@@ -126,7 +126,16 @@ The assistant has access to the following tools:
 - **Client:**
   - Node.js
   - Google Gemini AI
-  - @modelcontextprotocol/sdk
+  - dotenv for configuration
+
+## 🤖 AI Capabilities
+
+- Content Strategy Development
+- SEO Optimization
+- Image Search and Integration
+- Educational Technology Focus
+- Statistics Integration
+- Multi-Platform Content Generation
 
 ## 🙋‍♂️ Author
 
